@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tuning Switch Keyboard</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --panel: rgba(255,255,255,0.85);
+      --key-border: #222;
+      --white-key: #ffffff;
+      --black-key: #111111;
+      --accent: #e7e7e7;
+    }
+
+    body.dark {
+      --bg: #050505;
+      --fg: #ffffff;
+      --panel: rgba(0,0,0,0.75);
+      --key-border: #ffffff;
+      --white-key: #f9f9f9;
+      --black-key: #050505;
+      --accent: #222;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      transition: background 250ms ease, color 250ms ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(1100px, 100%);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 5vw, 4rem);
+      letter-spacing: -0.05em;
+    }
+
+    .mode-label {
+      display: inline-block;
+      margin: 12px auto 20px;
+      padding: 10px 18px;
+      border: 2px solid var(--fg);
+      background: var(--fg);
+      color: var(--bg);
+      border-radius: 999px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+
+    button, select {
+      font: inherit;
+      border: 2px solid var(--fg);
+      background: var(--bg);
+      color: var(--fg);
+      padding: 10px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    .hint {
+      max-width: 760px;
+      margin: 0 auto 20px;
+      opacity: 0.8;
+      line-height: 1.45;
+    }
+
+    .keyboard-wrap {
+      overflow-x: auto;
+      padding: 18px 6px 26px;
+      border: 2px solid var(--fg);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+    }
+
+    .keyboard {
+      position: relative;
+      height: 240px;
+      width: 1260px;
+      margin: 0 auto;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .white-key {
+      position: relative;
+      display: inline-flex;
+      align-items: flex-end;
+      justify-content: center;
+      width: 60px;
+      height: 240px;
+      border: 2px solid var(--key-border);
+      border-radius: 0 0 12px 12px;
+      background: var(--white-key);
+      color: #111;
+      margin-right: -2px;
+      vertical-align: top;
+      z-index: 1;
+      padding-bottom: 14px;
+      font-weight: 700;
+    }
+
+    .white-key.active {
+      background: #d9d9d9;
+      transform: translateY(2px);
+    }
+
+    .black-key {
+      position: absolute;
+      top: 0;
+      width: 38px;
+      height: 145px;
+      background: var(--black-key);
+      border: 2px solid var(--key-border);
+      border-radius: 0 0 9px 9px;
+      z-index: 3;
+      color: white;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .black-key.active {
+      background: #555;
+      transform: translateY(2px);
+    }
+
+    .readout {
+      margin-top: 16px;
+      font-weight: 700;
+      min-height: 1.5em;
+    }
+
+    .footer {
+      margin-top: 18px;
+      font-size: 0.9rem;
+      opacity: 0.75;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <h1>Tuning Switch Keyboard</h1>
+    <div id="modeLabel" class="mode-label">Equal Temperament</div>
+
+    <div class="controls">
+      <button id="toggleTuning">Switch to Just Intonation</button>
+      <label>
+        Root:
+        <select id="rootSelect">
+          <option value="C" selected>C</option>
+          <option value="D">D</option>
+          <option value="E">E</option>
+          <option value="F">F</option>
+          <option value="G">G</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+        </select>
+      </label>
+      <button id="panic">Stop Sound</button>
+    </div>
+
+    <p class="hint">
+      Tap or click keys to play. Hold several keys for chords. Toggle between standard 12-tone equal temperament and a simple just-intonation tuning based on the selected root.
+    </p>
+
+    <section class="keyboard-wrap">
+      <div id="keyboard" class="keyboard"></div>
+    </section>
+
+    <div id="readout" class="readout"></div>
+    <div class="footer">Prototype v1 — Web Audio API, no samples needed.</div>
+  </main>
+
+  <script>
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    let audioContext = null;
+    let tuningMode = "equal";
+    let rootNote = "C";
+    const activeVoices = new Map();
+
+    const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+    // Simple 5-limit just intonation ratios relative to the chosen root.
+    // Chromatic approximations: C, Db, D, Eb, E, F, F#, G, Ab, A, Bb, B
+    const justRatios = {
+      0: 1/1,
+      1: 16/15,
+      2: 9/8,
+      3: 6/5,
+      4: 5/4,
+      5: 4/3,
+      6: 45/32,
+      7: 3/2,
+      8: 8/5,
+      9: 5/3,
+      10: 9/5,
+      11: 15/8
+    };
+
+    function midiToEqualFrequency(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function noteNameFromMidi(midi) {
+      return noteNames[midi % 12] + (Math.floor(midi / 12) - 1);
+    }
+
+    function getRootMidiNear(noteName, targetMidi) {
+      const rootPc = noteNames.indexOf(noteName);
+      let candidate = Math.floor(targetMidi / 12) * 12 + rootPc;
+      while (candidate > targetMidi) candidate -= 12;
+      while (candidate + 12 <= targetMidi) candidate += 12;
+      return candidate;
+    }
+
+    function midiToJustFrequency(midi) {
+      const rootMidi = getRootMidiNear(rootNote, midi);
+      const semitoneDistance = midi - rootMidi;
+      const octaveOffset = Math.floor(semitoneDistance / 12);
+      const degree = ((semitoneDistance % 12) + 12) % 12;
+      const rootFreq = midiToEqualFrequency(rootMidi);
+      return rootFreq * justRatios[degree] * Math.pow(2, octaveOffset);
+    }
+
+    function getFrequency(midi) {
+      return tuningMode === "equal" ? midiToEqualFrequency(midi) : midiToJustFrequency(midi);
+    }
+
+    function ensureAudio() {
+      if (!audioContext) {
+        audioContext = new AudioContextClass();
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    function playNote(midi, keyElement) {
+      ensureAudio();
+      if (activeVoices.has(midi)) return;
+
+      const now = audioContext.currentTime;
+      const frequency = getFrequency(midi);
+
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(frequency, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.025);
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(now);
+
+      activeVoices.set(midi, { oscillator, gain, keyElement });
+      keyElement.classList.add("active");
+      document.getElementById("readout").textContent =
+        `${noteNameFromMidi(midi)} — ${frequency.toFixed(2)} Hz`;
+    }
+
+    function stopNote(midi) {
+      const voice = activeVoices.get(midi);
+      if (!voice || !audioContext) return;
+
+      const now = audioContext.currentTime;
+      voice.gain.gain.cancelScheduledValues(now);
+      voice.gain.gain.setValueAtTime(Math.max(voice.gain.gain.value, 0.0001), now);
+      voice.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      voice.oscillator.stop(now + 0.2);
+      voice.keyElement.classList.remove("active");
+      activeVoices.delete(midi);
+    }
+
+    function stopAll() {
+      [...activeVoices.keys()].forEach(stopNote);
+      document.getElementById("readout").textContent = "";
+    }
+
+    function updateModeUI() {
+      const body = document.body;
+      const modeLabel = document.getElementById("modeLabel");
+      const toggle = document.getElementById("toggleTuning");
+
+      if (tuningMode === "equal") {
+        body.classList.remove("dark");
+        modeLabel.textContent = "Equal Temperament";
+        toggle.textContent = "Switch to Just Intonation";
+      } else {
+        body.classList.add("dark");
+        modeLabel.textContent = `Just Intonation — Root ${rootNote}`;
+        toggle.textContent = "Switch to Equal Temperament";
+      }
+    }
+
+    function buildKeyboard() {
+      const keyboard = document.getElementById("keyboard");
+      keyboard.innerHTML = "";
+
+      // C3 to B5 = 36 semitones, three octaves
+      const startMidi = 48;
+      const endMidi = 83;
+
+      let whiteIndex = 0;
+      const whiteKeyWidth = 60;
+      const blackOffsets = {
+        1: 40,   // C#
+        3: 100,  // D#
+        6: 220,  // F#
+        8: 280,  // G#
+        10: 340  // A#
+      };
+
+      for (let midi = startMidi; midi <= endMidi; midi++) {
+        const pc = midi % 12;
+        const name = noteNameFromMidi(midi);
+        const isBlack = [1, 3, 6, 8, 10].includes(pc);
+
+        if (!isBlack) {
+          const key = document.createElement("div");
+          key.className = "white-key";
+          key.dataset.midi = midi;
+          key.textContent = name;
+          keyboard.appendChild(key);
+          whiteIndex++;
+        }
+      }
+
+      // Add black keys positioned over white-key row.
+      for (let midi = startMidi; midi <= endMidi; midi++) {
+        const pc = midi % 12;
+        const isBlack = [1, 3, 6, 8, 10].includes(pc);
+        if (!isBlack) continue;
+
+        const octaveGroup = Math.floor((midi - startMidi) / 12);
+        const key = document.createElement("div");
+        key.className = "black-key";
+        key.dataset.midi = midi;
+        key.textContent = noteNameFromMidi(midi);
+        key.style.left = `${octaveGroup * 7 * whiteKeyWidth + blackOffsets[pc]}px`;
+        keyboard.appendChild(key);
+      }
+
+      keyboard.querySelectorAll("[data-midi]").forEach(key => {
+        const midi = Number(key.dataset.midi);
+
+        key.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          key.setPointerCapture(event.pointerId);
+          playNote(midi, key);
+        });
+
+        key.addEventListener("pointerup", event => {
+          event.preventDefault();
+          stopNote(midi);
+        });
+
+        key.addEventListener("pointercancel", () => stopNote(midi));
+        key.addEventListener("pointerleave", event => {
+          if (event.pressure === 0) stopNote(midi);
+        });
+      });
+    }
+
+    document.getElementById("toggleTuning").addEventListener("click", () => {
+      tuningMode = tuningMode === "equal" ? "just" : "equal";
+      stopAll();
+      updateModeUI();
+    });
+
+    document.getElementById("rootSelect").addEventListener("change", event => {
+      rootNote = event.target.value;
+      stopAll();
+      updateModeUI();
+    });
+
+    document.getElementById("panic").addEventListener("click", stopAll);
+
+    window.addEventListener("keydown", event => {
+      const map = {
+        "a": 60, "w": 61, "s": 62, "e": 63, "d": 64, "f": 65,
+        "t": 66, "g": 67, "y": 68, "h": 69, "u": 70, "j": 71, "k": 72
+      };
+      const midi = map[event.key.toLowerCase()];
+      if (midi === undefined || event.repeat) return;
+      const keyElement = document.querySelector(`[data-midi="${midi}"]`);
+      if (keyElement) playNote(midi, keyElement);
+    });
+
+    window.addEventListener("keyup", event => {
+      const map = {
+        "a": 60, "w": 61, "s": 62, "e": 63, "d": 64, "f": 65,
+        "t": 66, "g": 67, "y": 68, "h": 69, "u": 70, "j": 71, "k": 72
+      };
+      const midi = map[event.key.toLowerCase()];
+      if (midi !== undefined) stopNote(midi);
+    });
+
+    buildKeyboard();
+    updateModeUI();
+  </script>
+</body>
+</html>
